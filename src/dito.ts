@@ -1,14 +1,13 @@
-import {mat3d, quat4, Quat4, vec2d, Vec2d, vec3d, Vec3d, Vec3} from "gl-matrix";
 
 export interface Obb {
-  center: Vec3d;
-  halfSize: Vec3;
-  quaternion: Quat4;
+  center: Float64Array;
+  halfSize: Float32Array;
+  quaternion: Float32Array;
 }
 
 export interface Attribute {
   /** Data uses the data type of the vertex attribute */
-  data: WritableArrayLike<number>;
+  data: number[] | Float64Array | Float32Array;
   /** Components per vertex */
   size: number;
 
@@ -18,14 +17,139 @@ export interface Attribute {
   strideIdx: number;
 }
 
+namespace glMatrix {
+  const tmpV3 = vec3d.create();
+
+  export namespace vec3d {
+    export function create(): Float64Array { return new Float64Array(3); }
+    export function createFrom(x: number, y: number, z: number): Float64Array {
+      return set3(x, y, z, new Float64Array(3));
+    }
+    export function add(a: Float64Array, b: Float64Array, d?: Float64Array): Float64Array {
+      if (!d)
+        d = a;
+
+      d[0] = a[0] + b[0];
+      d[1] = a[1] + b[1];
+      d[2] = a[2] + b[2];
+      return d;
+    }
+    export function set(from: Float64Array, d: Float64Array) {
+      d[0] = from[0];
+      d[1] = from[1];
+      d[2] = from[2];
+    }
+    export function set3(x: number, y: number, z: number, d: Float64Array): Float64Array {
+      d[0] = x;
+      d[1] = y;
+      d[2] = z;
+      return d;
+    }
+    export function subtract(a: Float64Array, b: Float64Array, d?: Float64Array): Float64Array {
+      if (!d)
+        d = a;
+
+      d[0] = a[0] - b[0];
+      d[1] = a[1] - b[1];
+      d[2] = a[2] - b[2];
+      return d;
+    }
+    export function scale(a: Float64Array, s: number, d?: Float64Array): Float64Array {
+      if (!d)
+        d = a;
+
+      d[0] = a[0] * s;
+      d[1] = a[1] * s;
+      d[2] = a[2] * s;
+      return d;
+    }
+    export function length2(a: Float64Array): number {
+      return a[0] * a[0] + a[1] * a[1] + a[2] * a[2];
+    }
+    export function length(a: Float64Array): number {
+      return Math.sqrt(length2(a));
+    }
+    export function dist2(a: Float64Array, b: Float64Array): number {
+      subtract(a, b, tmpV3);
+      return length2(tmpV3);
+    }
+    export function normalize(a: Float64Array, d?: Float64Array): Float64Array {
+      return scale(a, 1 / length(a), d);
+    }
+    export function cross(a: Float64Array, b: Float64Array, d?: Float64Array): Float64Array {
+      if (!d)
+        d = a;
+
+      const x1 = a[0], y1 = a[1], z1 = a[2];
+      const x2 = b[0], y2 = b[1], z2 = b[2];
+      d[0] = y1 * z2 - z1 * y2;
+      d[1] = z1 * x2 - x1 * z2;
+      d[2] = x1 * y2 - y1 * x2;
+      return d;
+    }
+    export function dot(a: Float64Array, b: Float64Array): number {
+      return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    }
+  }
+  export namespace vec2d {
+    export function create(): Float64Array { return new Float64Array(2); }
+  }
+  export namespace quat4 {
+    export function identity(a: Float32Array) {
+      a[0] = 0;
+      a[1] = 0;
+      a[2] = 0;
+      a[3] = 1;
+    }
+    export function fromRotationMatrix(m: Float64Array, d: Float32Array): Float32Array {
+
+      // Algorithm in Ken Shoemake's article in 1987 SIGGRAPH course notes
+      // article "Quaternion Calculus and Fast Animation".
+
+      const fTrace = m[0] + m[4] + m[8];
+      if (fTrace > 0.0) {
+        // |w| > 1/2, may as well choose w > 1/2
+        let fRoot = Math.sqrt(fTrace + 1.0); // 2w
+        d[3] = 0.5 * fRoot;
+        fRoot = 0.5 / fRoot; // 1/(4w)
+        d[0] = (m[7] - m[5]) * fRoot;
+        d[1] = (m[2] - m[6]) * fRoot;
+        d[2] = (m[3] - m[1]) * fRoot;
+      } else {
+        // |w| <= 1/2
+        const s_iNext = [1, 2, 0];
+        var i = 0;
+        if (m[4] > m[0])
+          i = 1;
+        if (m[8] > m[i * 3 + i])
+          i = 2;
+        var j = s_iNext[i];
+        var k = s_iNext[j];
+
+        let fRoot = Math.sqrt(m[i * 3 + i] - m[j * 3 + j] - m[k * 3 + k] + 1.0);
+        d[i] = 0.5 * fRoot;
+        fRoot = 0.5 / fRoot;
+        d[3] = (m[k * 3 + j] - m[j * 3 + k]) * fRoot;
+        d[j] = (m[j * 3 + i] + m[i * 3 + j]) * fRoot;
+        d[k] = (m[k * 3 + i] + m[i * 3 + k]) * fRoot;
+      }
+
+      return d;
+    }
+  }
+  export namespace mat3d {
+    export function create(): Float64Array { return new Float64Array(9); }
+  }
+}
+
 const epsilon: number = 0.000001;
-const alMid = vec3d.create();
-const alLen = vec3d.create();
+const alMid = glMatrix.vec3d.create();
+const alLen = glMatrix.vec3d.create();
 
 // Derived from the C++ sample implementation of http://www.idt.mdh.se/~tla/publ/FastOBBs.pdf
 export function computeOBB(positions: Attribute, obb: Obb) {
 
-  const {data, strideIdx} = positions;
+  const { data, strideIdx } = positions;
   const count = data.length / strideIdx;
   if (count <= 0) {
     return;
@@ -36,35 +160,35 @@ export function computeOBB(positions: Attribute, obb: Obb) {
 
   // Compute size of AABB (max and min projections of vertices are already
   // computed as slabs 0-2)
-  vec3d.add(extremals.minProj, extremals.maxProj, alMid);
-  vec3d.scale(alMid, 0.5);
+  glMatrix.vec3d.add(extremals.minProj, extremals.maxProj, alMid);
+  glMatrix.vec3d.scale(alMid, 0.5);
 
-  vec3d.subtract(extremals.maxProj, extremals.minProj, alLen);
+  glMatrix.vec3d.subtract(extremals.maxProj, extremals.minProj, alLen);
 
   const alVal = _getQualityValue(alLen);
   const best = new Orientation();
   best.quality = alVal;
 
   if (count < 14) {
-    positions = {data: new Float64Array(extremals.buffer, 14 * 8, 14 * 3), size: 3, offsetIdx: 0, strideIdx: 3 };
+    positions = { data: new Float64Array(extremals.buffer, 14 * 8, 14 * 3), size: 3, offsetIdx: 0, strideIdx: 3 };
   }
 
   // Find best OBB axes based on the constructed base triangle
-  const p0 = vec3d.create(); // Vertices of the large base triangle
-  const p1 = vec3d.create(); // Vertices of the large base triangle
-  const p2 = vec3d.create(); // Vertices of the large base triangle
-  const e0 = vec3d.create(); // Edge vectors of the large base triangle
-  const e1 = vec3d.create(); // Edge vectors of the large base triangle
-  const e2 = vec3d.create(); // Edge vectors of the large base triangle
-  const n = vec3d.create(); // Unit normal of the large base triangle
+  const p0 = glMatrix.vec3d.create(); // Vertices of the large base triangle
+  const p1 = glMatrix.vec3d.create(); // Vertices of the large base triangle
+  const p2 = glMatrix.vec3d.create(); // Vertices of the large base triangle
+  const e0 = glMatrix.vec3d.create(); // Edge vectors of the large base triangle
+  const e1 = glMatrix.vec3d.create(); // Edge vectors of the large base triangle
+  const e2 = glMatrix.vec3d.create(); // Edge vectors of the large base triangle
+  const n = glMatrix.vec3d.create(); // Unit normal of the large base triangle
 
   switch (_findBestObbAxesFromBaseTriangle(extremals, positions, n, p0, p1, p2, e0, e1, e2, best, obb)) {
-     case 1:
-       _finalizeAxisAlignedOBB(alMid, alLen, obb);
-       return;
-     case 2:
-       _finalizeLineAlignedOBB(positions, e0, obb);
-       return;
+    case 1:
+      _finalizeAxisAlignedOBB(alMid, alLen, obb);
+      return;
+    case 2:
+      _finalizeLineAlignedOBB(positions, e0, obb);
+      return;
   }
 
   // Find improved OBB axes based on constructed di-tetrahedral shape raised from base triangle
@@ -72,8 +196,8 @@ export function computeOBB(positions: Attribute, obb: Obb) {
 
   // compute the true obb dimensions by iterating over all vertices
   _computeObbDimensions(positions, best.b0, best.b1, best.b2, bMin, bMax);
-  const bLen = vec3d.create();
-  vec3d.subtract(bMax, bMin, bLen);
+  const bLen = glMatrix.vec3d.create();
+  glMatrix.vec3d.subtract(bMax, bMin, bLen);
   best.quality = _getQualityValue(bLen);
 
   // Check if the OBB extent is still smaller than the intial AABB
@@ -85,57 +209,57 @@ export function computeOBB(positions: Attribute, obb: Obb) {
   }
 }
 
-function _findBestObbAxesFromBaseTriangle(extremals: ExtremalPoints, positions: Attribute, n: Vec3d,
-  p0: Vec3d, p1: Vec3d, p2: Vec3d,
-  e0: Vec3d, e1: Vec3d, e2: Vec3d,
-  best: Orientation, obb: Obb ) {
+function _findBestObbAxesFromBaseTriangle(extremals: ExtremalPoints, positions: Attribute, n: Float64Array,
+  p0: Float64Array, p1: Float64Array, p2: Float64Array,
+  e0: Float64Array, e1: Float64Array, e2: Float64Array,
+  best: Orientation, obb: Obb) {
 
-    _findFurthestPointPair(extremals, p0, p1);
+  _findFurthestPointPair(extremals, p0, p1);
 
-    // Degenerate case 1:
-    // If the furthest points are very close, return OBB aligned with the initial AABB
-    if (vec3d.dist2(p0, p1) < epsilon) {
-      return 1;
-    }
+  // Degenerate case 1:
+  // If the furthest points are very close, return OBB aligned with the initial AABB
+  if (glMatrix.vec3d.dist2(p0, p1) < epsilon) {
+    return 1;
+  }
 
-    // Compute edge vector of the line segment p0, p1
-    vec3d.subtract(p0, p1, e0);
-    vec3d.normalize(e0);
+  // Compute edge vector of the line segment p0, p1
+  glMatrix.vec3d.subtract(p0, p1, e0);
+  glMatrix.vec3d.normalize(e0);
 
-    // Find a third point furthest away from line given by p0, e0 to define the large base triangle
-    const dist2 = _findFurthestPointFromInfiniteEdge(positions, p0, e0, p2);
+  // Find a third point furthest away from line given by p0, e0 to define the large base triangle
+  const dist2 = _findFurthestPointFromInfiniteEdge(positions, p0, e0, p2);
 
-    // Degenerate case 2:
-    // If the third point is located very close to the line, return an OBB aligned with the line
-    if (dist2 < epsilon) {
-      return 2;
-    }
+  // Degenerate case 2:
+  // If the third point is located very close to the line, return an OBB aligned with the line
+  if (dist2 < epsilon) {
+    return 2;
+  }
 
-    // Compute the two remaining edge vectors and the normal vector of the base triangle
-    vec3d.subtract(p1, p2, e1);
-    vec3d.normalize(e1);
-    vec3d.subtract(p2, p0, e2);
-    vec3d.normalize(e2);
-    vec3d.cross(e1, e0, n);
-    vec3d.normalize(n);
+  // Compute the two remaining edge vectors and the normal vector of the base triangle
+  glMatrix.vec3d.subtract(p1, p2, e1);
+  glMatrix.vec3d.normalize(e1);
+  glMatrix.vec3d.subtract(p2, p0, e2);
+  glMatrix.vec3d.normalize(e2);
+  glMatrix.vec3d.cross(e1, e0, n);
+  glMatrix.vec3d.normalize(n);
 
-    _findBestObbAxesFromTriangleNormalAndEdgeVectors(positions, n, e0, e1, e2, best);
-    return 0; // success
+  _findBestObbAxesFromTriangleNormalAndEdgeVectors(positions, n, e0, e1, e2, best);
+  return 0; // success
 }
 
-const q0 = vec3d.create();
-const q1 = vec3d.create();
-const f0 = vec3d.create(); // Edge vectors towards q0/1
-const f1 = vec3d.create(); // Edge vectors towards q0/1
-const f2 = vec3d.create(); // Edge vectors towards q0/1
-const n0 = vec3d.create(); // Unit normals of tetra tris
-const n1 = vec3d.create(); // Unit normals of tetra tris
-const n2 = vec3d.create(); // Unit normals of tetra tris
+const q0 = glMatrix.vec3d.create();
+const q1 = glMatrix.vec3d.create();
+const f0 = glMatrix.vec3d.create(); // Edge vectors towards q0/1
+const f1 = glMatrix.vec3d.create(); // Edge vectors towards q0/1
+const f2 = glMatrix.vec3d.create(); // Edge vectors towards q0/1
+const n0 = glMatrix.vec3d.create(); // Unit normals of tetra tris
+const n1 = glMatrix.vec3d.create(); // Unit normals of tetra tris
+const n2 = glMatrix.vec3d.create(); // Unit normals of tetra tris
 
-function _findImprovedObbAxesFromUpperAndLowerTetrasOfBaseTriangle(positions: Attribute, n: Vec3d,
-  p0: Vec3d, p1: Vec3d, p2: Vec3d,
-  e0: Vec3d, e1: Vec3d, e2: Vec3d,
-  best: Orientation, obb: Obb ) {
+function _findImprovedObbAxesFromUpperAndLowerTetrasOfBaseTriangle(positions: Attribute, n: Float64Array,
+  p0: Float64Array, p1: Float64Array, p2: Float64Array,
+  e0: Float64Array, e1: Float64Array, e2: Float64Array,
+  best: Orientation, obb: Obb) {
 
   // Find furthest points above and below the plane of the base triangle for tetra constructions
   _findUpperLowerTetraPoints(positions, n, p0, p1, p2, q0, q1);
@@ -143,19 +267,19 @@ function _findImprovedObbAxesFromUpperAndLowerTetrasOfBaseTriangle(positions: At
   // For each valid point found, search for the best OBB axes based on the 3 arising triangles
   if (q0[0] !== undefined) {
 
-    vec3d.subtract(q0, p0, f0);
-    vec3d.normalize(f0);
-    vec3d.subtract(q0, p1, f1);
-    vec3d.normalize(f1);
-    vec3d.subtract(q0, p2, f2);
-    vec3d.normalize(f2);
+    glMatrix.vec3d.subtract(q0, p0, f0);
+    glMatrix.vec3d.normalize(f0);
+    glMatrix.vec3d.subtract(q0, p1, f1);
+    glMatrix.vec3d.normalize(f1);
+    glMatrix.vec3d.subtract(q0, p2, f2);
+    glMatrix.vec3d.normalize(f2);
 
-    vec3d.cross(f1, e0, n0);
-    vec3d.normalize(n0);
-    vec3d.cross(f2, e1, n1);
-    vec3d.normalize(n1);
-    vec3d.cross(f0, e2, n2);
-    vec3d.normalize(n2);
+    glMatrix.vec3d.cross(f1, e0, n0);
+    glMatrix.vec3d.normalize(n0);
+    glMatrix.vec3d.cross(f2, e1, n1);
+    glMatrix.vec3d.normalize(n1);
+    glMatrix.vec3d.cross(f0, e2, n2);
+    glMatrix.vec3d.normalize(n2);
 
     _findBestObbAxesFromTriangleNormalAndEdgeVectors(positions, n0, e0, f1, f0, best);
     _findBestObbAxesFromTriangleNormalAndEdgeVectors(positions, n1, e1, f2, f1, best);
@@ -163,19 +287,19 @@ function _findImprovedObbAxesFromUpperAndLowerTetrasOfBaseTriangle(positions: At
   }
   if (q1[0] !== undefined) {
 
-    vec3d.subtract(q1, p0, f0);
-    vec3d.normalize(f0);
-    vec3d.subtract(q1, p1, f1);
-    vec3d.normalize(f1);
-    vec3d.subtract(q1, p2, f2);
-    vec3d.normalize(f2);
+    glMatrix.vec3d.subtract(q1, p0, f0);
+    glMatrix.vec3d.normalize(f0);
+    glMatrix.vec3d.subtract(q1, p1, f1);
+    glMatrix.vec3d.normalize(f1);
+    glMatrix.vec3d.subtract(q1, p2, f2);
+    glMatrix.vec3d.normalize(f2);
 
-    vec3d.cross(f1, e0, n0);
-    vec3d.normalize(n0);
-    vec3d.cross(f2, e1, n1);
-    vec3d.normalize(n1);
-    vec3d.cross(f0, e2, n2);
-    vec3d.normalize(n2);
+    glMatrix.vec3d.cross(f1, e0, n0);
+    glMatrix.vec3d.normalize(n0);
+    glMatrix.vec3d.cross(f2, e1, n1);
+    glMatrix.vec3d.normalize(n1);
+    glMatrix.vec3d.cross(f0, e2, n2);
+    glMatrix.vec3d.normalize(n2);
 
     _findBestObbAxesFromTriangleNormalAndEdgeVectors(positions, n0, e0, f1, f0, best);
     _findBestObbAxesFromTriangleNormalAndEdgeVectors(positions, n1, e1, f2, f1, best);
@@ -183,38 +307,38 @@ function _findImprovedObbAxesFromUpperAndLowerTetrasOfBaseTriangle(positions: At
   }
 }
 
-function _findFurthestPointPair(extremals: ExtremalPoints, p0: Vec3d, p1: Vec3d) {
+function _findFurthestPointPair(extremals: ExtremalPoints, p0: Float64Array, p1: Float64Array) {
 
-  let maxDist2 = vec3d.dist2(extremals.maxVert[0], extremals.minVert[0]);
+  let maxDist2 = glMatrix.vec3d.dist2(extremals.maxVert[0], extremals.minVert[0]);
   let index: number = 0;
 
   for (let i = 1; i < 7; ++i) {
-    const dist2 = vec3d.dist2(extremals.maxVert[i], extremals.minVert[i]);
+    const dist2 = glMatrix.vec3d.dist2(extremals.maxVert[i], extremals.minVert[i]);
     if (dist2 > maxDist2) {
       maxDist2 = dist2;
       index = i;
     }
   }
-  vec3d.set(extremals.minVert[index], p0);
-  vec3d.set(extremals.maxVert[index], p1);
+  glMatrix.vec3d.set(extremals.minVert[index], p0);
+  glMatrix.vec3d.set(extremals.maxVert[index], p1);
 }
 
-const u0 = vec3d.create();
+const u0 = glMatrix.vec3d.create();
 
-function _findFurthestPointFromInfiniteEdge(positions: Attribute, p0: Vec3d, e0: Vec3d,
-  p: Vec3d ): number {
+function _findFurthestPointFromInfiniteEdge(positions: Attribute, p0: Float64Array, e0: Float64Array,
+  p: Float64Array): number {
 
-  const {data, offsetIdx, strideIdx} = positions;
+  const { data, offsetIdx, strideIdx } = positions;
 
   let maxDist2 = Number.NEGATIVE_INFINITY;
   let maxIndex: number = 0;
 
   for (let i = offsetIdx; i < data.length; i += strideIdx) {
     // inlined _dist2PointInfiniteEdge
-    vec3d.set3(data[i] - p0[0], data[i + 1] - p0[1], data[i + 2] - p0[2], u0);
+    glMatrix.vec3d.set3(data[i] - p0[0], data[i + 1] - p0[1], data[i + 2] - p0[2], u0);
     const t = e0[0] * u0[0] + e0[1] * u0[1] + e0[2] * u0[2];
-    const sqLen_e0 = vec3d.length2(e0);
-    const dist2 = vec3d.length2(u0) - t * t / sqLen_e0;
+    const sqLen_e0 = glMatrix.vec3d.length2(e0);
+    const dist2 = glMatrix.vec3d.length2(u0) - t * t / sqLen_e0;
 
     if (dist2 > maxDist2) {
       maxDist2 = dist2;
@@ -222,18 +346,18 @@ function _findFurthestPointFromInfiniteEdge(positions: Attribute, p0: Vec3d, e0:
     }
   }
 
-  vec3d.set3(data[maxIndex], data[maxIndex + 1], data[maxIndex + 2], p);
+  glMatrix.vec3d.set3(data[maxIndex], data[maxIndex + 1], data[maxIndex + 2], p);
   return maxDist2;
 }
 
-const minmax = vec2d.create();
+const minmax = glMatrix.vec2d.create();
 
-function _findUpperLowerTetraPoints(positions: Attribute, n: Vec3d,
-  p0: Vec3d, p1: Vec3d, p2: Vec3d,
-  q0: Vec3d, q1: Vec3d) {
+function _findUpperLowerTetraPoints(positions: Attribute, n: Float64Array,
+  p0: Float64Array, p1: Float64Array, p2: Float64Array,
+  q0: Float64Array, q1: Float64Array) {
 
   _findExtremalPoints_OneDir(positions, n, minmax, q1, q0);
-  const triProj = vec3d.dot(p0, n);
+  const triProj = glMatrix.vec3d.dot(p0, n);
 
   if (minmax[1] - epsilon <= triProj) {
     q0[0] = undefined; // invalidate
@@ -243,23 +367,23 @@ function _findUpperLowerTetraPoints(positions: Attribute, n: Vec3d,
   }
 }
 
-const m0 = vec3d.create();
-const m1 = vec3d.create();
-const m2 = vec3d.create();
-const dmax = vec3d.create();
-const dmin = vec3d.create();
-const dlen = vec3d.create();
+const m0 = glMatrix.vec3d.create();
+const m1 = glMatrix.vec3d.create();
+const m2 = glMatrix.vec3d.create();
+const dmax = glMatrix.vec3d.create();
+const dmin = glMatrix.vec3d.create();
+const dlen = glMatrix.vec3d.create();
 
-function _findBestObbAxesFromTriangleNormalAndEdgeVectors(positions: Attribute, n: Vec3d,
-  e0: Vec3d, e1: Vec3d, e2: Vec3d, best: Orientation) {
+function _findBestObbAxesFromTriangleNormalAndEdgeVectors(positions: Attribute, n: Float64Array,
+  e0: Float64Array, e1: Float64Array, e2: Float64Array, best: Orientation) {
 
-  if (vec3d.length2(n) < epsilon) {
+  if (glMatrix.vec3d.length2(n) < epsilon) {
     return;
   }
 
-  vec3d.cross(e0, n, m0);
-  vec3d.cross(e1, n, m1);
-  vec3d.cross(e2, n, m2);
+  glMatrix.vec3d.cross(e0, n, m0);
+  glMatrix.vec3d.cross(e1, n, m1);
+  glMatrix.vec3d.cross(e2, n, m2);
 
   // The operands are assumed to be orthogonal and unit normals
   _findExtremalProjs_OneDir(positions, n, minmax);
@@ -284,19 +408,19 @@ function _findBestObbAxesFromTriangleNormalAndEdgeVectors(positions: Attribute, 
     const quality = _getQualityValue(dlen);
 
     if (quality < best.quality) {
-      vec3d.set(edges[i], best.b0);
-      vec3d.set(n, best.b1);
-      vec3d.set(ems[i], best.b2);
+      glMatrix.vec3d.set(edges[i], best.b0);
+      glMatrix.vec3d.set(n, best.b1);
+      glMatrix.vec3d.set(ems[i], best.b2);
       best.quality = quality;
     }
   }
 }
 
-const point = vec3d.create();
+const point = glMatrix.vec3d.create();
 
-function _findExtremalProjs_OneDir(positions: Attribute, n: Vec3d, minmax: Vec2d) {
+function _findExtremalProjs_OneDir(positions: Attribute, n: Float64Array, minmax: Float64Array) {
 
-  const {data, offsetIdx, strideIdx} = positions;
+  const { data, offsetIdx, strideIdx } = positions;
 
   minmax[0] = Number.POSITIVE_INFINITY;
   minmax[1] = Number.NEGATIVE_INFINITY;
@@ -309,79 +433,81 @@ function _findExtremalProjs_OneDir(positions: Attribute, n: Vec3d, minmax: Vec2d
   }
 }
 
-function _findExtremalPoints_OneDir(positions: Attribute, n: Vec3d, minmax: Vec2d,
-   minVert: Vec3d, maxVert: Vec3d) {
+function _findExtremalPoints_OneDir(positions: Attribute, n: Float64Array, minmax: Float64Array,
+  minVert: Float64Array, maxVert: Float64Array) {
 
-  const {data, offsetIdx, strideIdx} = positions;
-  vec3d.set3(data[offsetIdx], data[offsetIdx + 1], data[offsetIdx + 2], minVert);
-  vec3d.set(minVert, maxVert);
+  const { data, offsetIdx, strideIdx } = positions;
+  glMatrix.vec3d.set3(data[offsetIdx], data[offsetIdx + 1], data[offsetIdx + 2], minVert);
+  glMatrix.vec3d.set(minVert, maxVert);
 
-  minmax[0] = vec3d.dot(point, n);
+  minmax[0] = glMatrix.vec3d.dot(point, n);
   minmax[1] = minmax[0];
 
   for (let i = offsetIdx + strideIdx; i < data.length; i += strideIdx) {
 
-    vec3d.set3(data[i], data[i + 1], data[i + 2], point);
-    const proj = vec3d.dot(point, n);
+    glMatrix.vec3d.set3(data[i], data[i + 1], data[i + 2], point);
+    const proj = glMatrix.vec3d.dot(point, n);
 
     if (proj < minmax[0]) {
-        minmax[0] = proj;
-        vec3d.set(point, minVert);
+      minmax[0] = proj;
+      glMatrix.vec3d.set(point, minVert);
     }
     if (proj > minmax[1]) {
-        minmax[1] = proj;
-        vec3d.set(point, maxVert);
+      minmax[1] = proj;
+      glMatrix.vec3d.set(point, maxVert);
     }
   }
 }
 
-function _finalizeAxisAlignedOBB(mid: Vec3d, len: Vec3d, obb: Obb) {
+function _finalizeAxisAlignedOBB(mid: Float64Array, len: Float64Array, obb: Obb) {
 
-  vec3d.set(mid, obb.center);
-  vec3d.scale(len, 0.5, obb.halfSize);
-  quat4.identity(obb.quaternion);
+  glMatrix.vec3d.set(mid, obb.center);
+  obb.halfSize[0] = len[0] * 0.5;
+  obb.halfSize[1] = len[1] * 0.5;
+  obb.halfSize[2] = len[2] * 0.5;
+  glMatrix.quat4.identity(obb.quaternion);
 }
 
-const r = vec3d.create();
-const v = vec3d.create();
-const w = vec3d.create();
-const bMin = vec3d.create();
-const bMax = vec3d.create();
-const bLen = vec3d.create();
+const r = glMatrix.vec3d.create();
+const v = glMatrix.vec3d.create();
+const w = glMatrix.vec3d.create();
+const bMin = glMatrix.vec3d.create();
+const bMax = glMatrix.vec3d.create();
+const bLen = glMatrix.vec3d.create();
 
 // This function is only called if the construction of the large base triangle fails
-function _finalizeLineAlignedOBB(positions: Attribute, u: Vec3d, obb: Obb) {
+function _finalizeLineAlignedOBB(positions: Attribute, u: Float64Array, obb: Obb) {
 
   // Given u, build any orthonormal base u, v, w
   // Make sure r is not equal to u
-  vec3d.set(u, r);
+  glMatrix.vec3d.set(u, r);
   if (Math.abs(u[0]) > Math.abs(u[1]) && Math.abs(u[0]) > Math.abs(u[2])) {
     r[0] = 0;
   }
   else if (Math.abs(u[1]) > Math.abs(u[2])) {
     r[1] = 0;
   }
-  else     {
+  else {
     r[2] = 0;
   }
 
-  if (vec3d.length2(r) < epsilon) {
+  if (glMatrix.vec3d.length2(r) < epsilon) {
     r[0] = r[1] = r[2] = 1;
   }
 
-  vec3d.cross(u, r, v);
-  vec3d.normalize(v);
-  vec3d.cross(u, v, w);
-  vec3d.normalize(w);
+  glMatrix.vec3d.cross(u, r, v);
+  glMatrix.vec3d.normalize(v);
+  glMatrix.vec3d.cross(u, v, w);
+  glMatrix.vec3d.normalize(w);
 
   // compute the true obb dimensions by iterating over all vertices
   _computeObbDimensions(positions, u, v, w, bMin, bMax);
-  vec3d.subtract(bMax, bMin, bLen);
+  glMatrix.vec3d.subtract(bMax, bMin, bLen);
   _finalizeOBB(u, v, w, bMin, bMax, bLen, obb);
 }
 
-function _computeObbDimensions(positions: Attribute, v0: Vec3d, v1: Vec3d, v2: Vec3d,
-  min: Vec3d, max: Vec3d) {
+function _computeObbDimensions(positions: Attribute, v0: Float64Array, v1: Float64Array, v2: Float64Array,
+  min: Float64Array, max: Float64Array) {
 
   _findExtremalProjs_OneDir(positions, v0, minmax);
   min[0] = minmax[0];
@@ -394,30 +520,32 @@ function _computeObbDimensions(positions: Attribute, v0: Vec3d, v1: Vec3d, v2: V
   max[2] = minmax[1];
 }
 
-const tmp = vec3d.create();
-const rot = mat3d.create();
-const q = vec3d.create();
+const tmp = glMatrix.vec3d.create();
+const rot = glMatrix.mat3d.create();
+const q = glMatrix.vec3d.create();
 
-function _finalizeOBB(v0: Vec3d, v1: Vec3d, v2: Vec3d,
-  min: Vec3d, max: Vec3d, len: Vec3d, obb: Obb) {
+function _finalizeOBB(v0: Float64Array, v1: Float64Array, v2: Float64Array,
+  min: Float64Array, max: Float64Array, len: Float64Array, obb: Obb) {
 
   rot[0] = v0[0]; rot[3] = v0[1]; rot[6] = v0[2];
   rot[1] = v1[0]; rot[4] = v1[1]; rot[7] = v1[2];
   rot[2] = v2[0]; rot[5] = v2[1]; rot[8] = v2[2];
-  quat4.fromRotationMatrix(rot, obb.quaternion);
+  glMatrix.quat4.fromRotationMatrix(rot, obb.quaternion);
 
   // midpoint expressed in the OBB's own coordinate system
-  vec3d.add(min, max, q);
-  vec3d.scale(q, 0.5);
+  glMatrix.vec3d.add(min, max, q);
+  glMatrix.vec3d.scale(q, 0.5);
 
   // Compute midpoint expressed in the standard base
-  vec3d.scale(v0, q[0], obb.center);
-  vec3d.scale(v1, q[1], tmp);
-  vec3d.add(obb.center, tmp);
-  vec3d.scale(v2, q[2], tmp);
-  vec3d.add(obb.center, tmp);
+  glMatrix.vec3d.scale(v0, q[0], obb.center);
+  glMatrix.vec3d.scale(v1, q[1], tmp);
+  glMatrix.vec3d.add(obb.center, tmp);
+  glMatrix.vec3d.scale(v2, q[2], tmp);
+  glMatrix.vec3d.add(obb.center, tmp);
 
-  vec3d.scale(len, 0.5, obb.halfSize);
+  obb.halfSize[0] = len[0] * 0.5;
+  obb.halfSize[1] = len[1] * 0.5;
+  obb.halfSize[2] = len[2] * 0.5;
 }
 
 class ExtremalPoints {
@@ -425,8 +553,8 @@ class ExtremalPoints {
 
   minProj: Float64Array;
   maxProj: Float64Array;
-  minVert: Vec3d[] = [];
-  maxVert: Vec3d[] = [];
+  minVert: Float64Array[] = [];
+  maxVert: Float64Array[] = [];
 
   constructor(positions: Attribute) {
 
@@ -459,10 +587,10 @@ class ExtremalPoints {
     const minIndices: number[] = [];
     const maxIndices: number[] = [];
 
-    const {data, offsetIdx, strideIdx} = positions;
+    const { data, offsetIdx, strideIdx } = positions;
 
     // find extremal points
-    for (let i = offsetIdx; i < data.length; i += strideIdx ) {
+    for (let i = offsetIdx; i < data.length; i += strideIdx) {
 
       // Slab 0: dir {1, 0, 0}
       let proj: number = data[i];
@@ -544,9 +672,9 @@ class ExtremalPoints {
 
     for (let i = 0; i < numPoints; ++i) {
       let index = minIndices[i];
-      vec3d.set3(data[index], data[index + 1], data[index + 2], this.minVert[i]);
+      glMatrix.vec3d.set3(data[index], data[index + 1], data[index + 2], this.minVert[i]);
       index = maxIndices[i];
-      vec3d.set3(data[index], data[index + 1], data[index + 2], this.maxVert[i]);
+      glMatrix.vec3d.set3(data[index], data[index + 1], data[index + 2], this.maxVert[i]);
     }
     // Note: Normalization of the extremal projection values can be done here.
     // DiTO-14 only needs the extremal vertices, and the extremal projection
@@ -556,12 +684,12 @@ class ExtremalPoints {
 }
 
 class Orientation {
-  b0 = vec3d.createFrom(1, 0, 0); // OBB orientation
-  b1 = vec3d.createFrom(0, 1, 0); // OBB orientation
-  b2 = vec3d.createFrom(0, 0, 1); // OBB orientation
+  b0 = glMatrix.vec3d.createFrom(1, 0, 0); // OBB orientation
+  b1 = glMatrix.vec3d.createFrom(0, 1, 0); // OBB orientation
+  b2 = glMatrix.vec3d.createFrom(0, 0, 1); // OBB orientation
   quality: number = 0; // evaluation of OBB for orientation
 }
 
-function _getQualityValue(len: Vec3d): number {
+function _getQualityValue(len: Float64Array): number {
   return len[0] * len[1] + len[0] * len[2] + len[1] * len[2]; // half box area
 }
