@@ -22,8 +22,12 @@
     "noUnusedLocals": true,
     "suppressImplicitAnyIndexErrors": true,
     "target": "es5",
+    "outDir": "dist/esm"
   },
-  "include": [
-    "src/**/*"
+  "files": [
+    "src/dito.ts"
+  ],
+  "exclude": [
+    "node_modules"
   ]
 }
