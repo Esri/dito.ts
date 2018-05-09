@@ -10,7 +10,7 @@ sample implementation](http://gameenginegems.com/geg2.php).
 
 ## Issues
 
-Find a bug or want to request a new feature?  Please let us know by submitting an issue.
+Find a bug or want to request a new feature? Please let us know by submitting an issue.
 
 ## Contributing
 
@@ -18,7 +18,8 @@ Esri welcomes contributions from anyone and everyone. Please see our [guidelines
 
 ## Licensing
 
-Copyright 2018 Esri
+Copyright 2018 Esri.
+Copyright 2011 Thomas Larsson and Linus Kallberg (C++ implementation).
 
 Licensed under the BSD 2-clause License,
 you may not use this file except in compliance with the License.
@@ -29,4 +30,4 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-A copy of the license is available in the repository's [LICENSE]( https://raw.github.com/Esri/dito.ts/master/LICENSE) file.
+A copy of the license is available in the repository's [LICENSE](https://raw.github.com/Esri/dito.ts/master/LICENSE) file.
