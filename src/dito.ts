@@ -203,8 +203,7 @@ export function computeOBB(positions: Attribute, obb: Obb) {
   // Check if the OBB extent is still smaller than the intial AABB
   if (best.quality < alVal) {
     _finalizeOBB(best.b0, best.b1, best.b2, bMin, bMax, bLen, obb); // if so, assign all OBB params
-  }
-  else {
+  } else {
     _finalizeAxisAlignedOBB(alMid, alLen, obb); // otherwise, assign all OBB params using the intial AABB
   }
 }
@@ -337,8 +336,9 @@ function _findFurthestPointFromInfiniteEdge(positions: Attribute, p0: Float64Arr
     // inlined _dist2PointInfiniteEdge
     glMatrix.vec3d.set3(data[i] - p0[0], data[i + 1] - p0[1], data[i + 2] - p0[2], u0);
     const t = e0[0] * u0[0] + e0[1] * u0[1] + e0[2] * u0[2];
-    const sqLen_e0 = glMatrix.vec3d.length2(e0);
-    const dist2 = glMatrix.vec3d.length2(u0) - t * t / sqLen_e0;
+    const sqLen_e0 = e0[0] * e0[0] + e0[1] * e0[1] + e0[2] * e0[2];
+    const sqLen_u0 = u0[0] * u0[0] + u0[1] * u0[1] + u0[2] * u0[2];
+    const dist2 = sqLen_u0 - (t * t) / sqLen_e0;
 
     if (dist2 > maxDist2) {
       maxDist2 = dist2;
@@ -426,7 +426,6 @@ function _findExtremalProjs_OneDir(positions: Attribute, n: Float64Array, minmax
   minmax[1] = Number.NEGATIVE_INFINITY;
 
   for (let i = offsetIdx; i < data.length; i += strideIdx) {
-
     const proj = data[i] * n[0] + data[i + 1] * n[1] + data[i + 2] * n[2]; // opt: inline dot product
     minmax[0] = Math.min(minmax[0], proj);
     minmax[1] = Math.max(minmax[1], proj);
@@ -444,17 +443,15 @@ function _findExtremalPoints_OneDir(positions: Attribute, n: Float64Array, minma
   minmax[1] = minmax[0];
 
   for (let i = offsetIdx + strideIdx; i < data.length; i += strideIdx) {
-
-    glMatrix.vec3d.set3(data[i], data[i + 1], data[i + 2], point);
-    const proj = glMatrix.vec3d.dot(point, n);
+    const proj = data[i] * n[0] + data[i + 1] * n[1] + data[i + 2] * n[2];
 
     if (proj < minmax[0]) {
       minmax[0] = proj;
-      glMatrix.vec3d.set(point, minVert);
+      glMatrix.vec3d.set3(data[i], data[i + 1], data[i + 2], minVert);
     }
     if (proj > minmax[1]) {
       minmax[1] = proj;
-      glMatrix.vec3d.set(point, maxVert);
+      glMatrix.vec3d.set3(data[i], data[i + 1], data[i + 2], maxVert);
     }
   }
 }
@@ -548,18 +545,18 @@ function _finalizeOBB(v0: Float64Array, v1: Float64Array, v2: Float64Array,
   obb.halfSize[2] = len[2] * 0.5;
 }
 
+const numPoints = 7;
+
 class ExtremalPoints {
   buffer: ArrayBuffer;
 
   minProj: Float64Array;
   maxProj: Float64Array;
-  minVert: Float64Array[] = [];
-  maxVert: Float64Array[] = [];
+  minVert: Float64Array[] = new Array(numPoints);
+  maxVert: Float64Array[] = new Array(numPoints);
 
   constructor(positions: Attribute) {
-
     // setup storage
-    const numPoints = 7;
     const bufferSize = numPoints * (8 + 8 + 24 + 24);
     this.buffer = new ArrayBuffer(bufferSize);
 
@@ -570,12 +567,12 @@ class ExtremalPoints {
     this.maxProj = new Float64Array(this.buffer, offset, numPoints);
     offset += numPoints * 8;
 
-    while (this.minVert.length < numPoints) {
-      this.minVert.push(new Float64Array(this.buffer, offset, 3));
+    for (let i = 0; i < numPoints; ++i) {
+      this.minVert[i] = new Float64Array(this.buffer, offset, 3);
       offset += 24;
     }
-    while (this.maxVert.length < numPoints) {
-      this.maxVert.push(new Float64Array(this.buffer, offset, 3));
+    for (let i = 0; i < numPoints; ++i) {
+      this.maxVert[i] = new Float64Array(this.buffer, offset, 3);
       offset += 24;
     }
 
@@ -584,14 +581,13 @@ class ExtremalPoints {
       this.minProj[i] = Number.POSITIVE_INFINITY;
       this.maxProj[i] = Number.NEGATIVE_INFINITY;
     }
-    const minIndices: number[] = [];
-    const maxIndices: number[] = [];
+    const minIndices: number[] = new Array(numPoints);
+    const maxIndices: number[] = new Array(numPoints);
 
     const { data, offsetIdx, strideIdx } = positions;
 
     // find extremal points
     for (let i = offsetIdx; i < data.length; i += strideIdx) {
-
       // Slab 0: dir {1, 0, 0}
       let proj: number = data[i];
       if (proj < this.minProj[0]) {
